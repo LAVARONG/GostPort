@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GostPort / 极简映射</title>
+    <!-- Tailwind CSS 引流，快速构建 UI 层 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Vue 3 Petite 版本：纯净的响应式框架，极致轻量 -->
+    <script src="https://unpkg.com/petite-vue" defer init></script>
+    <style>
+        /* 极致留白的版式设计与英文字体搭配 */
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap');
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background-color: #fafafa;
+            color: #1a1a1a;
+        }
+        .glass-card {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(0, 0, 0, 0.04);
+            box-shadow: 0 4px 20px -2px rgba(0,0,0,0.03);
+        }
+        
+        /* 改进 Switch Toggle 的样式实现方案 */
+        .toggle-checkbox:checked { right: 0; border-color: transparent; transform: translateX(1.5rem); }
+        .toggle-checkbox:checked + .toggle-label { background-color: #1a1a1a; border-color: #1a1a1a; }
+        .toggle-checkbox { right: 0; z-index: 1; border-color: #e5e7eb; transition: transform 0.2s ease-in-out; }
+    </style>
+</head>
+<body class="min-h-screen p-8" v-scope="App()" @vue:mounted="mounted()">
+    
+    <div class="max-w-4xl mx-auto">
+        <!-- 核心头部留白设计 -->
+        <header class="flex justify-between items-center mb-12">
+            <div>
+                <h1 class="text-3xl font-semibold tracking-tight">GostPort</h1>
+                <p class="text-gray-400 mt-2 text-sm font-medium">极致留白的轻量级管道控制器</p>
+            </div>
+            <button @click="openAddModal" class="bg-black hover:bg-gray-800 transition text-white px-5 py-2.5 rounded-full text-sm font-medium flex items-center shadow-md">
+                <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                添加映射
+            </button>
+        </header>
+
+        <!-- 规则卡片列表 -->
+        <div class="space-y-4">
+            <div v-if="rules.length === 0" class="text-center py-24 glass-card rounded-2xl text-gray-400 text-sm font-medium tracking-wide">
+                当前没有任何转发通道。轻点右上角添加。
+            </div>
+            
+            <div v-for="rule in rules" :key="rule.id" class="glass-card rounded-2xl p-6 flex items-center justify-between transition hover:shadow-lg">
+                <div class="flex items-center space-x-6">
+                    <!-- 状态指示灯 -->
+                    <div class="relative flex items-center justify-center w-10 h-10 rounded-full" :class="rule.enabled ? 'bg-green-50' : 'bg-gray-50'">
+                        <div class="absolute w-2 h-2 rounded-full" :class="rule.enabled && !rule.error ? 'bg-green-500 animate-pulse' : (rule.error ? 'bg-red-500' : 'bg-gray-300')"></div>
+                    </div>
+                    
+                    <div>
+                        <h3 class="text-base font-semibold tracking-tight">{{ rule.name || '未命名规则' }}</h3>
+                        <div class="text-xs font-mono text-gray-500 mt-1.5 flex items-center space-x-2">
+                            <span class="bg-gray-100 px-2 py-0.5 rounded border border-gray-200">{{ rule.local_ip || '0.0.0.0' }}:{{ rule.local_port }}</span>
+                            <span class="text-gray-300">→</span>
+                            <span class="bg-gray-100 px-2 py-0.5 rounded border border-gray-200">{{ rule.remote_ip }}:{{ rule.remote_port }}</span>
+                        </div>
+                        <div v-if="rule.error" class="text-xs text-red-500 mt-2 font-medium">
+                            ⚠️ 状态异常: {{ rule.error }}
+                        </div>
+                    </div>
+                </div>
+
+                <div class="flex items-center space-x-6">
+                    <!-- iOS 风格 Toggle 控制 -->
+                    <div class="relative inline-block w-12 mr-2 align-middle select-none">
+                        <input type="checkbox" :id="'toggle-'+rule.id" :checked="rule.enabled" @change="toggleRule(rule)" class="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer" />
+                        <label :for="'toggle-'+rule.id" class="toggle-label block overflow-hidden h-6 rounded-full bg-gray-200 cursor-pointer border border-transparent transition-colors duration-200 ease-in-out"></label>
+                    </div>
+
+                    <!-- 编辑按钮 -->
+                    <button @click="editRule(rule)" class="text-gray-300 hover:text-blue-500 transition p-2">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
+                    </button>
+
+                    <!-- 删除按钮 -->
+                    <button @click="deleteRule(rule.id)" class="text-gray-300 hover:text-red-500 transition p-2">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 弹窗：新增映射 -->
+        <div v-if="showAddModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm transition-opacity" style="display: none;" :style="{ display: showAddModal ? 'flex' : 'none' }">
+            <div class="bg-white rounded-[2rem] p-8 w-full max-w-md shadow-2xl relative" @click.stop>
+                <div class="flex justify-between items-center mb-8">
+                    <h2 class="text-xl font-semibold tracking-tight">{{ isEditing ? '编辑互联设置' : '建立新互联' }}</h2>
+                    <button @click="showAddModal = false" class="text-gray-400 hover:text-black transition">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                    </button>
+                </div>
+
+                <div class="space-y-5">
+                    <div>
+                        <label class="block text-xs font-medium text-gray-500 mb-1.5 ml-1">规则备注</label>
+                        <input v-model="newRule.name" type="text" class="w-full border border-gray-200 rounded-2xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-black/5 focus:border-black transition text-sm bg-gray-50/50 hover:bg-white" placeholder="示例：我的主力远程机器">
+                    </div>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-xs font-medium text-gray-500 mb-1.5 ml-1">监听类型</label>
+                            <select v-model="newRule.local_ip" class="w-full border border-gray-200 rounded-2xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-black/5 focus:border-black transition text-sm bg-gray-50/50 hover:bg-white">
+                                <option value="0.0.0.0">外网 (0.0.0.0)</option>
+                                <option value="127.0.0.1">仅本机 (127.0.0.1)</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-gray-500 mb-1.5 ml-1">本地监听端口</label>
+                            <input v-model.number="newRule.local_port" type="number" class="w-full border border-gray-200 rounded-2xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-black/5 focus:border-black transition text-sm bg-gray-50/50 hover:bg-white font-mono" placeholder="示例：13389">
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-5 gap-3">
+                        <div class="col-span-3">
+                            <label class="block text-xs font-medium text-gray-500 mb-1.5 ml-1">目标 IP / 域名</label>
+                            <input v-model="newRule.remote_ip" type="text" class="w-full border border-gray-200 rounded-2xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-black/5 focus:border-black transition text-sm bg-gray-50/50 hover:bg-white font-mono" placeholder="10.10.x.x">
+                        </div>
+                        <div class="col-span-2">
+                            <label class="block text-xs font-medium text-gray-500 mb-1.5 ml-1">目标端口</label>
+                            <input v-model.number="newRule.remote_port" type="number" class="w-full border border-gray-200 rounded-2xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-black/5 focus:border-black transition text-sm bg-gray-50/50 hover:bg-white font-mono" placeholder="3389">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-8 pt-2">
+                    <button @click="addRule" class="w-full bg-black text-white font-medium rounded-2xl py-3.5 hover:bg-gray-800 transition shadow-lg shadow-black/10 text-sm tracking-wide">
+                        {{ isEditing ? '保存修改' : '确认建联' }}
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function App() {
+            return {
+                rules: [],
+                showAddModal: false,
+                isEditing: false,
+                newRule: {
+                    name: '',
+                    local_ip: '0.0.0.0',
+                    local_port: null,
+                    remote_ip: '',
+                    remote_port: 3389
+                },
+                openAddModal() {
+                    this.isEditing = false;
+                    this.newRule = { name: '', local_ip: '0.0.0.0', local_port: null, remote_ip: '', remote_port: 3389 };
+                    this.showAddModal = true;
+                },
+                editRule(rule) {
+                    this.isEditing = true;
+                    this.newRule = JSON.parse(JSON.stringify(rule));
+                    if (!this.newRule.local_ip) this.newRule.local_ip = '0.0.0.0';
+                    this.showAddModal = true;
+                },
+                mounted() {
+                    // 初始化拉取
+                    this.fetchRules();
+                    // 状态轮询：每 3 秒自动获取一次最新进程状态
+                    setInterval(() => this.fetchRules(), 3000);
+                },
+                async fetchRules() {
+                    try {
+                        const res = await fetch('/api/rules');
+                        if(res.ok) {
+                            this.rules = await res.json() || [];
+                        }
+                    } catch(e) {
+                         console.error("无法获得更新:", e);
+                    }
+                },
+                async addRule() {
+                    if (!this.newRule.local_port || !this.newRule.remote_ip || !this.newRule.remote_port) {
+                        alert("为了保证连接，核心参数（端口和IP）不能为空。");
+                        return;
+                    }
+                    try {
+                        const url = this.isEditing ? '/api/rules/update' : '/api/rules';
+                        const res = await fetch(url, {
+                            method: 'POST',
+                            body: JSON.stringify(this.newRule)
+                        });
+                        if(res.ok) {
+                            this.showAddModal = false;
+                            this.fetchRules();
+                        } else {
+                            alert("操作失败: " + await res.text());
+                        }
+                    } catch(e) {
+                        alert("网络异常: " + e.message);
+                    }
+                },
+                async toggleRule(rule) {
+                    const newState = !rule.enabled;
+                    // 前端先行乐观更新体验
+                    rule.enabled = newState;
+                    try {
+                        const res = await fetch('/api/rules/toggle', {
+                            method: 'POST',
+                            body: JSON.stringify({ id: rule.id, enabled: newState })
+                        });
+                    } catch(e) {
+                        // 回滚状态
+                        rule.enabled = !newState;
+                        alert("操作失败: " + e.message);
+                    }
+                    this.fetchRules(); // 刷新真实状态
+                },
+                async deleteRule(id) {
+                    if(!confirm('该操作无法撤回，确定要删除此连接记录吗？')) return;
+                    try {
+                        await fetch('/api/rules/delete', {
+                            method: 'POST',
+                            body: JSON.stringify({ id })
+                        });
+                        this.fetchRules();
+                    } catch(e) {
+                        alert("删除失败: " + e.message);
+                    }
+                }
+            }
+        }
+    </script>
+</body>
+</html>

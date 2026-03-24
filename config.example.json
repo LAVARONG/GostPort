@@ -1,0 +1,12 @@
+[
+  {
+    "id": "example-uuid-1234",
+    "name": "示例服务器 (Example Node)",
+    "local_ip": "127.0.0.1",
+    "local_port": 13389,
+    "remote_ip": "203.0.113.1",
+    "remote_port": 3389,
+    "enabled": false,
+    "error": ""
+  }
+]
