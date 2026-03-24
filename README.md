@@ -1,6 +1,5 @@
 # Gost 极简端口映射管理系统
 
-[![Go Report Card](https://goreportcard.com/badge/github.com/LAVARONG/GostPort)](https://goreportcard.com/report/github.com/LAVARONG/GostPort)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
 一个遵循“极致留白设计”与“第一性原理”构建的轻量级 Gost 端口映射管理系统。

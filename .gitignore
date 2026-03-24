@@ -1,5 +1,6 @@
 # Binaries
 *.exe
+*.zip
 *.exe~
 *.dll
 *.so
