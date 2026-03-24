@@ -119,6 +119,16 @@ func main() {
 	// 静态文件路由
 	http.Handle("/", http.FileServer(http.FS(htmlContent)))
 
+	// API：获取全局安全配置项
+	http.HandleFunc("/api/config", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"external_ip": os.Getenv("EXTERNAL_IP"),
+			})
+		}
+	})
+
 	// API：获取规则列表和添加新规则
 	http.HandleFunc("/api/rules", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet {

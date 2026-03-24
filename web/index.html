@@ -66,9 +66,9 @@
                     <div>
                         <h3 class="text-base font-semibold tracking-tight">{{ rule.name || '未命名规则' }}</h3>
                         <div class="text-xs font-mono text-gray-500 mt-1.5 flex items-center space-x-2">
-                            <span class="bg-gray-100 px-2 py-0.5 rounded border border-gray-200">{{ rule.local_ip || '0.0.0.0' }}:{{ rule.local_port }}</span>
+                            <span @click="copyText((rule.local_ip === '0.0.0.0' && externalIP ? externalIP : (rule.local_ip || '0.0.0.0')) + ':' + rule.local_port, $event)" class="bg-gray-100 px-2 py-0.5 rounded border border-gray-200 cursor-pointer hover:bg-gray-200 hover:text-black transition relative" title="点击复制">{{ rule.local_ip === '0.0.0.0' && externalIP ? externalIP : (rule.local_ip || '0.0.0.0') }}:{{ rule.local_port }}</span>
                             <span class="text-gray-300">→</span>
-                            <span class="bg-gray-100 px-2 py-0.5 rounded border border-gray-200">{{ rule.remote_ip }}:{{ rule.remote_port }}</span>
+                            <span @click="copyText(rule.remote_ip + ':' + rule.remote_port, $event)" class="bg-gray-100 px-2 py-0.5 rounded border border-gray-200 cursor-pointer hover:bg-gray-200 hover:text-black transition relative" title="点击复制">{{ rule.remote_ip }}:{{ rule.remote_port }}</span>
                         </div>
                         <div v-if="rule.error" class="text-xs text-red-500 mt-2 font-medium">
                             ⚠️ 状态异常: {{ rule.error }}
@@ -160,6 +160,7 @@
             return {
                 rules: [],
                 latencyMap: {},
+                externalIP: '',
                 showAddModal: false,
                 isEditing: false,
                 newRule: {
@@ -204,7 +205,63 @@
                     if (!this.newRule.local_ip) this.newRule.local_ip = '0.0.0.0';
                     this.showAddModal = true;
                 },
+                async fetchConfig() {
+                    try {
+                        const res = await fetch('/api/config');
+                        if (res.ok) {
+                            const data = await res.json();
+                            if (data && data.external_ip) {
+                                this.externalIP = data.external_ip;
+                            }
+                        }
+                    } catch (e) {
+                        console.error("配置拉取失败:", e);
+                    }
+                },
+                async copyText(text, event) {
+                    try {
+                        // 优先使用新版 Clipboard API（要求 HTTPS 或 localhost）
+                        if (navigator.clipboard && window.isSecureContext) {
+                            await navigator.clipboard.writeText(text);
+                        } else {
+                            // 降级方案：应对非 HTTPS 环境外网直接访问面板时的浏览器安全限制
+                            const textArea = document.createElement("textarea");
+                            textArea.value = text;
+                            textArea.style.position = "fixed";
+                            textArea.style.left = "-99999px";
+                            textArea.style.top = "0";
+                            document.body.appendChild(textArea);
+                            textArea.focus();
+                            textArea.select();
+                            const successful = document.execCommand('copy');
+                            document.body.removeChild(textArea);
+                            if (!successful) {
+                                throw new Error('浏览器阻止了复制操作');
+                            }
+                        }
+                        
+                        const el = event.currentTarget;
+                        const origBg = el.style.backgroundColor;
+                        const origColor = el.style.color;
+                        el.style.backgroundColor = '#1a1a1a';
+                        el.style.color = '#fff';
+                        
+                        const tempSpan = document.createElement('span');
+                        tempSpan.textContent = ' 已复制';
+                        tempSpan.className = 'text-[10px] ml-1 opacity-70';
+                        el.appendChild(tempSpan);
+                        
+                        setTimeout(() => {
+                            el.style.backgroundColor = origBg;
+                            el.style.color = origColor;
+                            if(el.contains(tempSpan)) el.removeChild(tempSpan);
+                        }, 800);
+                    } catch(e) {
+                        alert('剪贴板写入失败，您的浏览器可能在非安全连接(HTTP)下禁用了剪贴板权限，请手动框选复制: ' + text);
+                    }
+                },
                 mounted() {
+                    this.fetchConfig();
                     // 初始化拉取
                     this.fetchRules();
                     // 状态轮询：每 3 秒自动获取一次最新进程状态
