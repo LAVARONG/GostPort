@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 )
@@ -19,11 +20,67 @@ import (
 var webFS embed.FS
 
 var (
+	host = flag.String("host", "127.0.0.1", "管理面板监听IP")
 	port = flag.String("port", "8080", "管理面板启动端口")
 )
 
+func loadEnv(filepath string) {
+	data, err := os.ReadFile(filepath)
+	if err != nil {
+		return
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if len(line) == 0 || strings.HasPrefix(line, "#") {
+			continue
+		}
+		parts := strings.SplitN(line, "=", 2)
+		if len(parts) == 2 {
+			os.Setenv(strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1]))
+		}
+	}
+}
+
+func basicAuthMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		username := os.Getenv("WEB_USERNAME")
+		password := os.Getenv("WEB_PASSWORD")
+		if username != "" && password != "" {
+			user, pass, ok := r.BasicAuth()
+			if !ok || user != username || pass != password {
+				w.Header().Set("WWW-Authenticate", `Basic realm="Restricted"`)
+				http.Error(w, "Unauthorized", http.StatusUnauthorized)
+				return
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 func main() {
+	loadEnv(".env")
 	flag.Parse()
+
+	finalHost := *host
+	finalPort := *port
+
+	isHostSet := false
+	isPortSet := false
+	flag.Visit(func(f *flag.Flag) {
+		if f.Name == "host" {
+			isHostSet = true
+		}
+		if f.Name == "port" {
+			isPortSet = true
+		}
+	})
+
+	if !isHostSet && os.Getenv("WEB_HOST") != "" {
+		finalHost = os.Getenv("WEB_HOST")
+	}
+	if !isPortSet && os.Getenv("WEB_PORT") != "" {
+		finalPort = os.Getenv("WEB_PORT")
+	}
 
 	log.Println("=== GostPort 极简端口映射系统 ===")
 	log.Println("设计理念：极致留白 & 单文件部署")
@@ -179,8 +236,9 @@ func main() {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	log.Printf("服务已启动: http://localhost:%s\n", *port)
-	if err := http.ListenAndServe(":"+*port, nil); err != nil {
+	addr := net.JoinHostPort(finalHost, finalPort)
+	log.Printf("服务已启动: http://%s\n", addr)
+	if err := http.ListenAndServe(addr, basicAuthMiddleware(http.DefaultServeMux)); err != nil {
 		log.Fatal(err)
 	}
 }
