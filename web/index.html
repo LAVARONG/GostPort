@@ -38,10 +38,16 @@
                 <h1 class="text-3xl font-semibold tracking-tight">GostPort</h1>
                 <p class="text-gray-400 mt-2 text-sm font-medium">极致留白的轻量级管道控制器</p>
             </div>
-            <button @click="openAddModal" class="bg-black hover:bg-gray-800 transition text-white px-5 py-2.5 rounded-full text-sm font-medium flex items-center shadow-md">
-                <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
-                添加映射
-            </button>
+            <div class="flex items-center space-x-3">
+                <button @click="pingAll" class="bg-white border border-gray-200 hover:bg-gray-50 transition text-black px-5 py-2.5 rounded-full text-sm font-medium flex items-center shadow-sm">
+                    <svg class="w-4 h-4 mr-2 text-yellow-500" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clip-rule="evenodd"></path></svg>
+                    全部测速
+                </button>
+                <button @click="openAddModal" class="bg-black hover:bg-gray-800 transition text-white px-5 py-2.5 rounded-full text-sm font-medium flex items-center shadow-md">
+                    <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                    添加映射
+                </button>
+            </div>
         </header>
 
         <!-- 规则卡片列表 -->
@@ -71,6 +77,16 @@
                 </div>
 
                 <div class="flex items-center space-x-6">
+                    <!-- 测速详情图例与按钮 -->
+                    <div class="flex items-center space-x-2 mr-4">
+                        <span v-if="latencyMap[rule.id]" class="text-xs font-mono font-medium w-16 text-right" :class="latencyMap[rule.id] === '超时' ? 'text-red-500' : (latencyMap[rule.id] === '测速中...' ? 'text-gray-400 animate-pulse' : 'text-green-500')">
+                            {{ latencyMap[rule.id] }}
+                        </span>
+                        <button @click="pingRule(rule.id)" class="text-gray-300 hover:text-yellow-500 transition p-2 focus:outline-none" title="测试此节点延迟">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                        </button>
+                    </div>
+
                     <!-- iOS 风格 Toggle 控制 -->
                     <div class="relative inline-block w-12 mr-2 align-middle select-none">
                         <input type="checkbox" :id="'toggle-'+rule.id" :checked="rule.enabled" @change="toggleRule(rule)" class="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer" />
@@ -143,6 +159,7 @@
         function App() {
             return {
                 rules: [],
+                latencyMap: {},
                 showAddModal: false,
                 isEditing: false,
                 newRule: {
@@ -156,6 +173,30 @@
                     this.isEditing = false;
                     this.newRule = { name: '', local_ip: '0.0.0.0', local_port: null, remote_ip: '', remote_port: 3389 };
                     this.showAddModal = true;
+                },
+                async pingRule(id) {
+                    this.latencyMap[id] = '测速中...';
+                    try {
+                        const res = await fetch('/api/rules/ping', {
+                            method: 'POST',
+                            body: JSON.stringify({ id })
+                        });
+                        if (res.ok) {
+                            const data = await res.json();
+                            if (data.latency === -1) {
+                                this.latencyMap[id] = '超时';
+                            } else {
+                                this.latencyMap[id] = data.latency + 'ms';
+                            }
+                        } else {
+                            this.latencyMap[id] = '超时';
+                        }
+                    } catch(e) {
+                        this.latencyMap[id] = '超时';
+                    }
+                },
+                pingAll() {
+                    this.rules.forEach(r => this.pingRule(r.id));
                 },
                 editRule(rule) {
                     this.isEditing = true;

@@ -6,10 +6,13 @@ import (
 	"flag"
 	"io/fs"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
+	"time"
 )
 
 //go:embed web/*
@@ -122,6 +125,38 @@ func main() {
 			}
 		}
 		w.WriteHeader(http.StatusOK)
+	})
+
+	// API：提取节点执行 TCP 测速
+	http.HandleFunc("/api/rules/ping", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "不允许的请求方法", http.StatusMethodNotAllowed)
+			return
+		}
+		var req struct {
+			ID string `json:"id"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		
+		rule, err := mgr.GetRule(req.ID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		
+		target := net.JoinHostPort(rule.RemoteIP, strconv.Itoa(rule.RemotePort))
+		start := time.Now()
+		conn, err := net.DialTimeout("tcp", target, 3*time.Second)
+		if err != nil {
+			json.NewEncoder(w).Encode(map[string]interface{}{"latency": -1})
+			return
+		}
+		conn.Close()
+		
+		json.NewEncoder(w).Encode(map[string]interface{}{"latency": time.Since(start).Milliseconds()})
 	})
 
 	// API：删除规则

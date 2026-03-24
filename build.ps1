@@ -19,6 +19,6 @@ Write-Host "开始打包 Linux..."
 Compress-Archive -Path "gostport-linux-amd64", "config.example.json", "README.md", "LICENSE" -DestinationPath "gostport_v1.0.0_linux_amd64.zip" -Force
 
 Write-Host "清理可执行文件..."
-Remove-Item -Path "gostport-windows-amd64.exe", "gostport-linux-amd64" -Force
+# Remove-Item -Path "gostport-windows-amd64.exe", "gostport-linux-amd64" -Force
 
 Write-Host "SUCCESS_ALL_DONE"

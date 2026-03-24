@@ -9,6 +9,7 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"sort"
 	"sync"
 )
 
@@ -91,7 +92,21 @@ func (m *Manager) GetRules() []Rule {
 	for _, r := range m.rules {
 		list = append(list, *r)
 	}
+	// 按本地端口升序排列
+	sort.Slice(list, func(i, j int) bool {
+		return list[i].LocalPort < list[j].LocalPort
+	})
 	return list
+}
+
+// GetRule 提取单个规则参数（供测速系统获取 IP 信息调取）
+func (m *Manager) GetRule(id string) (Rule, error) {
+	m.lock.Lock()
+	defer m.lock.Unlock()
+	if r, ok := m.rules[id]; ok {
+		return *r, nil
+	}
+	return Rule{}, errors.New("寻找不到对应的映射")
 }
 
 // 生成一个简单的随机唯一标识符
