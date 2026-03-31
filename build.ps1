@@ -1,20 +1,20 @@
 $ErrorActionPreference = "Continue"
 
-$VERSION = "v1.1.0"
+$VERSION = "v1.1.1"
 Write-Host "================"
 Write-Host " 构建 GostPort  "
 Write-Host " 版本: $VERSION "
 Write-Host "================"
 
 Write-Host "开始编译 Windows amd64..."
-$env:GOOS="windows"
-$env:GOARCH="amd64"
+$env:GOOS = "windows"
+$env:GOARCH = "amd64"
 go build -ldflags="-s -w" -o gostport-windows-amd64.exe .
 if ($LASTEXITCODE -ne 0) { Write-Error "Windows 编译失败"; exit 1 }
 
 Write-Host "开始编译 Linux amd64..."
-$env:GOOS="linux"
-$env:GOARCH="amd64"
+$env:GOOS = "linux"
+$env:GOARCH = "amd64"
 go build -ldflags="-s -w" -o gostport-linux-amd64 .
 if ($LASTEXITCODE -ne 0) { Write-Error "Linux 编译失败"; exit 1 }
 

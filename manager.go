@@ -116,16 +116,20 @@ func generateID() string {
 	return hex.EncodeToString(b)
 }
 
-// AddRule 添加一条新的未启用的规则
+// AddRule 添加一条新的规则并默认启动它
 func (m *Manager) AddRule(r Rule) error {
 	m.lock.Lock()
-	defer m.lock.Unlock()
-	
 	r.ID = generateID()
 	r.Enabled = false
 	r.Error = ""
 	m.rules[r.ID] = &r
-	return m.Save()
+	err := m.Save()
+	m.lock.Unlock()
+
+	if err == nil {
+		m.StartRule(r.ID)
+	}
+	return err
 }
 
 // UpdateRule 更新一条规则
