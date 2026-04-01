@@ -9,7 +9,9 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"runtime"
 	"sort"
+	"strings"
 	"sync"
 )
 
@@ -21,8 +23,9 @@ type Rule struct {
 	LocalPort  int    `json:"local_port"`
 	RemoteIP   string `json:"remote_ip"`
 	RemotePort int    `json:"remote_port"`
+	Protocol   string `json:"protocol"` // "tcp", "udp", "tcp+udp"
 	Enabled    bool   `json:"enabled"`
-	Error      string `json:"error"`   // 报错信息，供前端展示此代理是否崩溃
+	Error      string `json:"error"` // 报错信息，供前端展示此代理是否崩溃
 }
 
 // Manager 集中管理配置与 Gost 进程
@@ -51,14 +54,22 @@ func (m *Manager) Load() error {
 	if err != nil {
 		return err
 	}
-	
+
 	var rulesList []Rule
 	if err := json.Unmarshal(data, &rulesList); err != nil {
 		return err
 	}
 
+	needsSave := false
 	for _, r := range rulesList {
 		rule := r
+
+		// 兼容旧版本配置中缺少 Protocol 参数的情况
+		if rule.Protocol == "" {
+			rule.Protocol = "tcp+udp"
+			needsSave = true
+		}
+
 		m.rules[rule.ID] = &rule
 		// 如果记录显示该规则处于启用状态，则尝试启动它
 		if rule.Enabled {
@@ -67,6 +78,10 @@ func (m *Manager) Load() error {
 				m.StartRule(rl.ID)
 			}(&rule)
 		}
+	}
+
+	if needsSave {
+		m.Save()
 	}
 	return nil
 }
@@ -141,7 +156,7 @@ func (m *Manager) UpdateRule(r Rule) error {
 		return errors.New("未能找到指定的规则记录")
 	}
 
-	needsRestart := (old.LocalIP != r.LocalIP) || (old.LocalPort != r.LocalPort) || (old.RemoteIP != r.RemoteIP) || (old.RemotePort != r.RemotePort)
+	needsRestart := (old.LocalIP != r.LocalIP) || (old.LocalPort != r.LocalPort) || (old.RemoteIP != r.RemoteIP) || (old.RemotePort != r.RemotePort) || (old.Protocol != r.Protocol)
 
 	if !needsRestart {
 		// 如果只改了备注等基础信息，无需重启进程，仅更新数据
@@ -157,6 +172,7 @@ func (m *Manager) UpdateRule(r Rule) error {
 			p.Process.Kill()
 			delete(m.processes, r.ID)
 		}
+		removeFirewallRule(r.ID, old.Protocol)
 	}
 
 	r.Enabled = false
@@ -175,7 +191,7 @@ func (m *Manager) UpdateRule(r Rule) error {
 func (m *Manager) DeleteRule(id string) error {
 	m.lock.Lock()
 	defer m.lock.Unlock()
-	
+
 	if _, ok := m.rules[id]; !ok {
 		return errors.New("未能找到指定的规则记录")
 	}
@@ -184,6 +200,7 @@ func (m *Manager) DeleteRule(id string) error {
 		p.Process.Kill()
 		delete(m.processes, id)
 	}
+	removeFirewallRule(id, m.rules[id].Protocol)
 	delete(m.rules, id)
 	return m.Save()
 }
@@ -192,12 +209,12 @@ func (m *Manager) DeleteRule(id string) error {
 func (m *Manager) StartRule(id string) error {
 	m.lock.Lock()
 	defer m.lock.Unlock()
-	
+
 	rule, ok := m.rules[id]
 	if !ok {
 		return errors.New("寻找不到对应的映射")
 	}
-	
+
 	// 先行清洗残留的进程
 	if p, ok := m.processes[id]; ok && p.Process != nil {
 		p.Process.Kill()
@@ -205,7 +222,7 @@ func (m *Manager) StartRule(id string) error {
 	}
 
 	rule.Error = ""
-	
+
 	// 尝试解析本地 gost，若不存在且不在环境变量中，则全自动从 GitHub 下载
 	gostBin, errEnsure := EnsureGost()
 	if errEnsure != nil {
@@ -219,18 +236,35 @@ func (m *Manager) StartRule(id string) error {
 	if localIP == "" {
 		localIP = "0.0.0.0"
 	}
-	// 组装 Gost 参数： -L=tcp://本地IP:本地端口/目标IP:目标端口
-	bind := fmt.Sprintf("tcp://%s:%d/%s:%d", localIP, rule.LocalPort, rule.RemoteIP, rule.RemotePort)
-	cmd := exec.Command(gostBin, "-L="+bind)
-	
-	log.Printf("[开启] 通道 %s -> 监听 %s 转发至 %s:%d\n", rule.Name, bind, rule.RemoteIP, rule.RemotePort)
+
+	protocol := rule.Protocol
+	if protocol == "" {
+		protocol = "tcp+udp"
+	}
+
+	var args []string
+	var displayStr string
+	if protocol == "tcp+udp" {
+		bindTCP := fmt.Sprintf("tcp://%s:%d/%s:%d", localIP, rule.LocalPort, rule.RemoteIP, rule.RemotePort)
+		bindUDP := fmt.Sprintf("udp://%s:%d/%s:%d", localIP, rule.LocalPort, rule.RemoteIP, rule.RemotePort)
+		args = []string{"-L=" + bindTCP, "-L=" + bindUDP}
+		displayStr = fmt.Sprintf("TCP/UDP://%s:%d -> %s:%d", localIP, rule.LocalPort, rule.RemoteIP, rule.RemotePort)
+	} else {
+		bind := fmt.Sprintf("%s://%s:%d/%s:%d", protocol, localIP, rule.LocalPort, rule.RemoteIP, rule.RemotePort)
+		args = []string{"-L=" + bind}
+		displayStr = fmt.Sprintf("%s://%s:%d -> %s:%d", protocol, localIP, rule.LocalPort, rule.RemoteIP, rule.RemotePort)
+	}
+
+	cmd := exec.Command(gostBin, args...)
+
+	log.Printf("[开启] 通道 %s -> %s\n", rule.Name, displayStr)
 
 	// 使用 Start() 而不是 Run()，以便异步挂在后台运行
 	if err := cmd.Start(); err != nil {
 		rule.Enabled = false
 		rule.Error = "启动失败: " + err.Error()
 		// 如果缺少 gost.exe 会在这里抛出错误，我们不 panic 返回异常
-		m.Save() 
+		m.Save()
 		return err
 	}
 
@@ -238,13 +272,15 @@ func (m *Manager) StartRule(id string) error {
 	rule.Enabled = true
 	m.Save()
 
+	addFirewallRule(id, rule.LocalPort, protocol)
+
 	// 开一个协程监视此进程的状态。若由于绑定地址冲突等原因闪退，要能捕获
 	go func(id string, c *exec.Cmd) {
 		err := c.Wait()
-		
+
 		m.lock.Lock()
 		defer m.lock.Unlock()
-		
+
 		// 只有当前活动的 cmd 依然是这颗进程时，才认为是进程生命周期由于外部原因终结
 		if currentCmd, ok := m.processes[id]; ok && currentCmd == c {
 			if r, ok := m.rules[id]; ok {
@@ -256,6 +292,10 @@ func (m *Manager) StartRule(id string) error {
 					} else {
 						r.Error = "进程异常结束"
 					}
+
+					// 进程崩溃时回收防火墙
+					removeFirewallRule(id, r.Protocol)
+
 					delete(m.processes, id)
 					m.Save()
 				}
@@ -270,7 +310,7 @@ func (m *Manager) StartRule(id string) error {
 func (m *Manager) StopRule(id string) error {
 	m.lock.Lock()
 	defer m.lock.Unlock()
-	
+
 	rule, ok := m.rules[id]
 	if !ok {
 		return errors.New("寻找不到对应的映射")
@@ -280,9 +320,11 @@ func (m *Manager) StopRule(id string) error {
 		p.Process.Kill()
 		delete(m.processes, id)
 	}
-	
+
+	removeFirewallRule(id, rule.Protocol)
+
 	log.Printf("[关闭] 通道 %s (ID: %s) 已手动切断\n", rule.Name, rule.ID)
-	
+
 	rule.Enabled = false
 	rule.Error = ""
 	return m.Save()
@@ -296,6 +338,61 @@ func (m *Manager) StopAll() {
 		if p != nil && p.Process != nil {
 			p.Process.Kill()
 		}
+		if rule, ok := m.rules[id]; ok {
+			removeFirewallRule(id, rule.Protocol)
+		}
 		delete(m.processes, id)
+	}
+}
+
+func addFirewallRule(id string, port int, protocol string) {
+	if runtime.GOOS != "windows" {
+		return
+	}
+	name := fmt.Sprintf("GostPort_%s", id)
+
+	protocols := []string{}
+	if protocol == "tcp+udp" {
+		protocols = []string{"TCP", "UDP"}
+	} else {
+		protocols = []string{strings.ToUpper(protocol)}
+	}
+
+	for _, p := range protocols {
+		ruleName := fmt.Sprintf("%s_%s", name, p)
+		exec.Command("netsh", "advfirewall", "firewall", "delete", "rule", "name="+ruleName).Run()
+
+		cmd := exec.Command("netsh", "advfirewall", "firewall", "add", "rule",
+			"name="+ruleName, "dir=in", "action=allow", "protocol="+p, fmt.Sprintf("localport=%d", port))
+		if err := cmd.Run(); err != nil {
+			log.Printf("添加防火墙规则失败 [%s]: %v", ruleName, err)
+		} else {
+			log.Printf("已自动放行防火墙端口 [%d/%s]", port, p)
+		}
+	}
+}
+
+func removeFirewallRule(id string, protocol string) {
+	if runtime.GOOS != "windows" {
+		return
+	}
+	if protocol == "" {
+		protocol = "tcp+udp"
+	}
+	name := fmt.Sprintf("GostPort_%s", id)
+
+	protocols := []string{}
+	if protocol == "tcp+udp" {
+		protocols = []string{"TCP", "UDP"}
+	} else {
+		protocols = []string{strings.ToUpper(protocol)}
+	}
+
+	for _, p := range protocols {
+		ruleName := fmt.Sprintf("%s_%s", name, p)
+		cmd := exec.Command("netsh", "advfirewall", "firewall", "delete", "rule", "name="+ruleName)
+		if err := cmd.Run(); err == nil {
+			log.Printf("已自动回收防火墙规则 [%s]", ruleName)
+		}
 	}
 }

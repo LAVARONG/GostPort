@@ -179,7 +179,7 @@ func main() {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		
+
 		if req.Enabled {
 			if err := mgr.StartRule(req.ID); err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -207,13 +207,13 @@ func main() {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		
+
 		rule, err := mgr.GetRule(req.ID)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusNotFound)
 			return
 		}
-		
+
 		target := net.JoinHostPort(rule.RemoteIP, strconv.Itoa(rule.RemotePort))
 		start := time.Now()
 		conn, err := net.DialTimeout("tcp", target, 3*time.Second)
@@ -222,7 +222,7 @@ func main() {
 			return
 		}
 		conn.Close()
-		
+
 		json.NewEncoder(w).Encode(map[string]interface{}{"latency": time.Since(start).Milliseconds()})
 	})
 

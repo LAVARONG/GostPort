@@ -79,7 +79,7 @@ func DownloadGost(destDir string) error {
 
 	// 版本标签如 "v3.2.6" 洗去 "v"
 	tag := strings.TrimPrefix(result.TagName, "v")
-	
+
 	// 根据 go-gost release 的命名规则： gost_3.2.6_windows_amd64.zip
 	targetName := fmt.Sprintf("gost_%s_%s_%s", tag, runtime.GOOS, runtime.GOARCH)
 
@@ -99,19 +99,19 @@ func DownloadGost(destDir string) error {
 
 	log.Printf("🎯精确定位到目标版本: %s", filename)
 	tmpFile := filepath.Join(destDir, filename)
-	
+
 	out, err := os.Create(tmpFile)
 	if err != nil {
 		return err
 	}
-	
+
 	req, _ := http.NewRequest("GET", downloadURL, nil)
 	r, err := http.DefaultClient.Do(req)
 	if err != nil {
 		out.Close()
 		return err
 	}
-	
+
 	_, err = io.Copy(out, r.Body)
 	r.Body.Close()
 	out.Close()

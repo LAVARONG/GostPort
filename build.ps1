@@ -1,6 +1,6 @@
 $ErrorActionPreference = "Continue"
 
-$VERSION = "v1.1.1"
+$VERSION = "v1.1.2"
 Write-Host "================"
 Write-Host " 构建 GostPort  "
 Write-Host " 版本: $VERSION "

@@ -72,7 +72,10 @@
                     </div>
                     
                     <div>
-                        <h3 class="text-base font-semibold tracking-tight">{{ rule.name || '未命名规则' }}</h3>
+                        <h3 class="text-base font-semibold tracking-tight">
+                            {{ rule.name || '未命名规则' }}
+                            <span class="ml-2 px-2 py-0.5 text-[10px] font-mono bg-gray-100 border border-gray-200 rounded text-gray-500 align-middle">{{ (rule.protocol || 'tcp').toUpperCase() }}</span>
+                        </h3>
                         <div class="text-xs font-mono text-gray-500 mt-1.5 flex items-center space-x-2">
                             <span @click="copyText((rule.local_ip === '0.0.0.0' && externalIP ? externalIP : (rule.local_ip || '0.0.0.0')) + ':' + rule.local_port, $event)" class="bg-gray-100 px-2 py-0.5 rounded border border-gray-200 cursor-pointer hover:bg-gray-200 hover:text-black transition relative" title="点击复制">{{ rule.local_ip === '0.0.0.0' && externalIP ? externalIP : (rule.local_ip || '0.0.0.0') }}:{{ rule.local_port }}</span>
                             <span class="text-gray-300">→</span>
@@ -129,17 +132,25 @@
                         <label class="block text-xs font-medium text-gray-500 mb-1.5 ml-1">规则备注</label>
                         <input v-model="newRule.name" type="text" class="w-full border border-gray-200 rounded-2xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-black/5 focus:border-black transition text-sm bg-gray-50/50 hover:bg-white" placeholder="示例：我的主力远程机器">
                     </div>
-                    <div class="grid grid-cols-2 gap-3">
+                    <div class="grid grid-cols-3 gap-3">
                         <div>
                             <label class="block text-xs font-medium text-gray-500 mb-1.5 ml-1">监听类型</label>
-                            <select v-model="newRule.local_ip" class="w-full border border-gray-200 rounded-2xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-black/5 focus:border-black transition text-sm bg-gray-50/50 hover:bg-white">
-                                <option value="0.0.0.0">外网 (0.0.0.0)</option>
-                                <option value="127.0.0.1">仅本机 (127.0.0.1)</option>
+                            <select v-model="newRule.local_ip" class="w-full border border-gray-200 rounded-2xl px-3 py-3 focus:outline-none focus:ring-2 focus:ring-black/5 focus:border-black transition text-sm bg-gray-50/50 hover:bg-white">
+                                <option value="0.0.0.0">外网</option>
+                                <option value="127.0.0.1">本机</option>
                             </select>
                         </div>
                         <div>
-                            <label class="block text-xs font-medium text-gray-500 mb-1.5 ml-1">本地监听端口</label>
-                            <input v-model.number="newRule.local_port" type="number" class="w-full border border-gray-200 rounded-2xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-black/5 focus:border-black transition text-sm bg-gray-50/50 hover:bg-white font-mono" placeholder="示例：13389">
+                            <label class="block text-xs font-medium text-gray-500 mb-1.5 ml-1">转发协议</label>
+                            <select v-model="newRule.protocol" class="w-full border border-gray-200 rounded-2xl px-3 py-3 focus:outline-none focus:ring-2 focus:ring-black/5 focus:border-black transition text-sm bg-gray-50/50 hover:bg-white text-center font-mono">
+                                <option value="tcp">TCP</option>
+                                <option value="udp">UDP</option>
+                                <option value="tcp+udp">TCP+UDP</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-gray-500 mb-1.5 ml-1">本地端口</label>
+                            <input v-model.number="newRule.local_port" type="number" class="w-full border border-gray-200 rounded-2xl px-3 py-3 focus:outline-none focus:ring-2 focus:ring-black/5 focus:border-black transition text-sm bg-gray-50/50 hover:bg-white font-mono" placeholder="如 13389">
                         </div>
                     </div>
                     <div class="grid grid-cols-5 gap-3">
@@ -176,7 +187,8 @@
                     local_ip: '0.0.0.0',
                     local_port: null,
                     remote_ip: '',
-                    remote_port: 3389
+                    remote_port: 3389,
+                    protocol: 'tcp'
                 },
                 openAddModal() {
                     this.isEditing = false;
@@ -187,7 +199,7 @@
                             nextPort = Math.max(...validPorts) + 1;
                         }
                     }
-                    this.newRule = { name: '', local_ip: '0.0.0.0', local_port: nextPort, remote_ip: '', remote_port: 3389 };
+                    this.newRule = { name: '', local_ip: '0.0.0.0', local_port: nextPort, remote_ip: '', remote_port: 3389, protocol: 'tcp' };
                     this.showAddModal = true;
                 },
                 async pingRule(id) {
@@ -228,6 +240,7 @@
                     this.isEditing = true;
                     this.newRule = JSON.parse(JSON.stringify(rule));
                     if (!this.newRule.local_ip) this.newRule.local_ip = '0.0.0.0';
+                    if (!this.newRule.protocol) this.newRule.protocol = 'tcp';
                     this.showAddModal = true;
                 },
                 async fetchConfig() {
